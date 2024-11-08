@@ -1,23 +1,35 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 
 type Job = {
   id_job: number
   title: string
-  company_name: string
   areas: string[]
   subareas: string[]
   seniority: string
-  work_model: string
-  description: string
   url: string
+  work_model: string
+  deeplink: string
+  contract_model: string
+  remuneration: string | null
+  company: {
+    company_name: string
+    url_logo_company: string | null
+  }
+  description: string
+  address: {
+    city: string
+    state: string
+    country: string
+  }
+  benefits: string[]
+  requirements: string[]
 }
 
 type JobsResponse = {
@@ -29,36 +41,55 @@ type JobsResponse = {
 
 export function JobListingsComponent() {
   const [jobs, setJobs] = useState<Job[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [areaFilter, setAreaFilter] = useState('')
-  const [seniorityFilter, setSeniorityFilter] = useState('')
+  const [areaFilter, setAreaFilter] = useState('all')
+  const [seniorityFilter, setSeniorityFilter] = useState('all')
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchJobs = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const response = await fetch(
+        'https://new-api-otv-e4k86.ondigitalocean.app/api/v1/jobs-recife',
+        {
+          method: 'GET',
+          headers: {
+            'Accept': '*/*',
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data: JobsResponse = await response.json()
+      setJobs(data.jobs)
+    } catch (error) {
+      console.error('Erro ao buscar vagas:', error)
+      setError('Erro ao carregar as vagas. Por favor, tente novamente mais tarde.')
+      setJobs([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    fetchJobs()
-  }, [currentPage, searchTerm, areaFilter, seniorityFilter])
-
-  const fetchJobs = async () => {
-    const response = await fetch(`http://localhost:3000/api/v1/jobs-recife?page=${currentPage}&limit=10&search=${searchTerm}&area=${areaFilter}&seniority=${seniorityFilter}`)
-    const data: JobsResponse = await response.json()
-    setJobs(data.jobs)
-    setTotalPages(data.totalPages)
-  }
+    void fetchJobs()
+  }, [fetchJobs])
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value)
-    setCurrentPage(1)
   }
 
   const handleAreaFilter = (value: string) => {
     setAreaFilter(value)
-    setCurrentPage(1)
   }
 
   const handleSeniorityFilter = (value: string) => {
     setSeniorityFilter(value)
-    setCurrentPage(1)
   }
 
   return (
@@ -77,7 +108,7 @@ export function JobListingsComponent() {
             <SelectValue placeholder="Área" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todas as áreas</SelectItem>
+            <SelectItem value="all">Todas as áreas</SelectItem>
             <SelectItem value="Tecnologia">Tecnologia</SelectItem>
             <SelectItem value="Vendas">Vendas</SelectItem>
             <SelectItem value="Administrativo">Administrativo</SelectItem>
@@ -88,55 +119,48 @@ export function JobListingsComponent() {
             <SelectValue placeholder="Senioridade" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todas as senioridades</SelectItem>
+            <SelectItem value="all">Todas as senioridades</SelectItem>
             <SelectItem value="Júnior">Júnior</SelectItem>
             <SelectItem value="Pleno">Pleno</SelectItem>
             <SelectItem value="Sênior">Sênior</SelectItem>
           </SelectContent>
         </Select>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {jobs.map((job) => (
-          <Card key={job.id_job}>
-            <CardHeader>
-              <CardTitle>{job.title}</CardTitle>
-              <CardDescription>{job.company_name}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm mb-2">{job.description.slice(0, 100)}...</p>
-              <div className="flex flex-wrap gap-2">
-                {job.areas.map((area) => (
-                  <Badge key={area} variant="secondary">{area}</Badge>
-                ))}
-                <Badge>{job.seniority}</Badge>
-                <Badge>{job.work_model}</Badge>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button asChild>
-                <a href={job.url} target="_blank" rel="noopener noreferrer">Ver Vaga</a>
-              </Button>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
-      <Pagination className="mt-4">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious href="#" onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))} />
-          </PaginationItem>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <PaginationItem key={page}>
-              <PaginationLink href="#" isActive={currentPage === page} onClick={() => setCurrentPage(page)}>
-                {page}
-              </PaginationLink>
-            </PaginationItem>
+      {isLoading ? (
+        <div className="text-center py-8">Carregando vagas...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-500">{error}</div>
+      ) : jobs.length === 0 ? (
+        <div className="text-center py-8">Nenhuma vaga encontrada</div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {jobs.map((job) => (
+            <Card key={job.id_job}>
+              <CardHeader>
+                <CardTitle>{job.title}</CardTitle>
+                <CardDescription>{job.company.company_name}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm mb-2">{job.description.slice(0, 100)}...</p>
+                <div className="flex flex-wrap gap-2">
+                  {job.areas.map((area) => (
+                    <Badge key={area} variant="secondary">{area}</Badge>
+                  ))}
+                  {job.seniority && <Badge>{job.seniority}</Badge>}
+                  {job.work_model && <Badge variant="outline">{job.work_model}</Badge>}
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button asChild className="w-full">
+                  <a href={job.url} target="_blank" rel="noopener noreferrer">
+                    Ver vaga
+                  </a>
+                </Button>
+              </CardFooter>
+            </Card>
           ))}
-          <PaginationItem>
-            <PaginationNext href="#" onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))} />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+        </div>
+      )}
     </div>
   )
 }
